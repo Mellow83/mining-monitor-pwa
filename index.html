@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1e293b">
+  <title>Mining Monitor SHA-256</title>
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIk1pbmluZyBNb25pdG9yIFNIQS0yNTYiLAogICJzaG9ydF9uYW1lIjogIk1pbmluZyBNb25pdG9yIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMxZTI5M2IiLAogICJ0aGVtZV9jb2xvciI6ICIjMWUyOTNiIiwKICAiaWNvbnMiOiBbXQp9">
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    
+    .header {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #334155;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .header h1 { font-size: 24px; margin-bottom: 8px; }
+    .header p { color: #94a3b8; font-size: 14px; }
+    
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-left: 12px;
+    }
+    .status.connected { background: #064e3b; color: #6ee7b7; }
+    .status.error { background: #7f1d1d; color: #fca5a5; }
+    .status.loading { background: #1e3a8a; color: #93c5fd; }
+    
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .controls input {
+      background: #334155;
+      border: 1px solid #475569;
+      color: white;
+      padding: 10px;
+      border-radius: 6px;
+      flex: 1;
+      min-width: 120px;
+    }
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-success { background: #059669; color: white; }
+    .btn-secondary { background: #475569; color: white; }
+    
+    .alert-box {
+      background: rgba(127, 29, 29, 0.3);
+      border: 1px solid #b91c1c;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .alert-box h3 { margin-bottom: 12px; color: #fca5a5; }
+    .alert-item {
+      background: rgba(127, 29, 29, 0.2);
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    
+    .best-option {
+      background: linear-gradient(135deg, rgba(6, 78, 59, 0.4), rgba(5, 150, 105, 0.4));
+      border: 2px solid #10b981;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+    }
+    .best-option h2 { color: #6ee7b7; margin-bottom: 8px; }
+    
+    .crypto-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    .crypto-card {
+      background: #1e293b;
+      border: 2px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+      transition: all 0.3s;
+    }
+    .crypto-card.best {
+      border-color: #10b981;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+    }
+    .crypto-card h3 { margin-bottom: 12px; }
+    .data-row {
+      background: rgba(51, 65, 85, 0.5);
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .data-label { font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    .data-value { font-size: 16px; font-weight: 600; font-family: 'Courier New', monospace; }
+    
+    .probability-box {
+      background: rgba(30, 58, 138, 0.4);
+      border: 1px solid #3b82f6;
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+    .probability-box .big { font-size: 20px; font-weight: bold; }
+    
+    .error-msg {
+      background: rgba(127, 29, 29, 0.3);
+      border: 1px solid #b91c1c;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 16px;
+      color: #fca5a5;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      font-size: 18px;
+    }
+    
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .config-screen {
+      max-width: 500px;
+      margin: 100px auto;
+      background: #1e293b;
+      padding: 32px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  
+  <script>
+    // State
+    let state = {
+      cryptos: [],
+      alerts: [],
+      loading: true,
+      error: null,
+      lastUpdate: null,
+      userHashrate: 6,
+      autoRefresh: true,
+      backendUrl: localStorage.getItem('backendUrl') || '',
+      isConfigured: !!localStorage.getItem('backendUrl'),
+      apiStatus: 'connecting'
+    };
+    
+    // Render
+    function render() {
+      const app = document.getElementById('app');
+      
+      if (!state.isConfigured) {
+        app.innerHTML = `
+          <div class="config-screen">
+            <h1>⚡ Configura Backend</h1>
+            <p style="margin: 16px 0; color: #94a3b8;">Inserisci l'URL del backend server:</p>
+            <input type="url" id="backendUrlInput" placeholder="https://tuo-backend.onrender.com" value="${state.backendUrl}" style="width: 100%; margin-bottom: 16px;">
+            <button class="btn btn-primary" onclick="saveBackendUrl()" style="width: 100%;">Salva e Connetti</button>
+            <div style="margin-top: 20px; padding: 16px; background: rgba(30, 58, 138, 0.3); border: 1px solid #3b82f6; border-radius: 6px; font-size: 13px;">
+              <strong>📝 Esempio:</strong><br>
+              <code>https://mining-monitor.onrender.com</code>
+            </div>
+          </div>
+        `;
+        return;
+      }
+      
+      const bestCrypto = getBestCrypto();
+      
+      app.innerHTML = `
+        <div class="container">
+          <div class="header">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+              <div>
+                <h1>⚡ Mining Monitor SHA-256
+                  <span class="status ${state.apiStatus}">
+                    ${state.apiStatus === 'connected' ? '✓ Connesso' : state.apiStatus === 'loading' ? '⏳ Caricamento...' : '✗ Errore'}
+                  </span>
+                </h1>
+                <p>Backend Cloud • Auto-refresh ${state.autoRefresh ? 'attivo' : 'disattivo'}</p>
+              </div>
+              <div style="font-size: 32px;">⚡</div>
+            </div>
+            
+            <div class="controls">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label>Hashrate (TH/s):</label>
+                <input type="number" value="${state.userHashrate}" onchange="updateHashrate(this.value)" step="0.1" style="width: 100px;">
+              </div>
+              <button class="btn ${state.autoRefresh ? 'btn-success' : 'btn-secondary'}" onclick="toggleAutoRefresh()">
+                Auto: ${state.autoRefresh ? 'ON' : 'OFF'}
+              </button>
+              <button class="btn btn-primary" onclick="fetchData()" ${state.loading ? 'disabled' : ''}>
+                🔄 Aggiorna
+              </button>
+              <button class="btn btn-secondary" onclick="changeServer()">
+                ⚙️ Cambia Server
+              </button>
+            </div>
+            
+            ${state.lastUpdate ? `<p style="margin-top: 12px; font-size: 13px; color: #94a3b8;">⏰ Aggiornato: ${new Date(state.lastUpdate).toLocaleString('it-IT')}</p>` : ''}
+            
+            ${state.error ? `<div class="error-msg">⚠️ ${state.error}</div>` : ''}
+          </div>
+          
+          ${state.alerts.length > 0 ? `
+            <div class="alert-box">
+              <h3>🔔 Alert Difficoltà</h3>
+              ${state.alerts.slice(0, 5).map(alert => `
+                <div class="alert-item">
+                  <strong>${alert.crypto}</strong><br>
+                  <small>Difficoltà ↓ ${Math.abs(alert.change)}% • ${new Date(alert.timestamp).toLocaleString('it-IT')}</small>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+          
+          ${bestCrypto && state.cryptos.length > 0 ? `
+            <div class="best-option">
+              <h2>🏆 Migliore Opzione</h2>
+              <div style="font-size: 18px; margin-top: 8px;">${bestCrypto.name}</div>
+              <div style="margin-top: 8px;">Tempo stimato: <strong style="color: #6ee7b7;">~${calculateProbability(bestCrypto).yearsToBlock} anni</strong></div>
+            </div>
+          ` : ''}
+          
+          ${state.loading && state.cryptos.length === 0 ? `
+            <div class="loading">
+              <div class="spinner"></div>
+              <p>Caricamento dati dal backend...</p>
+            </div>
+          ` : state.cryptos.length === 0 ? `
+            <div class="loading">
+              <p style="color: #fca5a5;">❌ Nessun dato disponibile</p>
+              <button class="btn btn-primary" onclick="fetchData()" style="margin-top: 16px;">Riprova</button>
+            </div>
+          ` : `
+            <div class="crypto-grid">
+              ${state.cryptos.map(crypto => {
+                const isBest = bestCrypto && crypto.id === bestCrypto.id;
+                const stats = calculateProbability(crypto);
+                const rewardValue = crypto.blockReward * crypto.price;
+                
+                return `
+                  <div class="crypto-card ${isBest ? 'best' : ''}">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
+                      <div>
+                        <h3>${crypto.name}</h3>
+                        <span style="font-size: 11px; padding: 4px 8px; background: rgba(5, 150, 105, 0.3); color: #6ee7b7; border-radius: 4px;">
+                          ${crypto.dataSource}
+                        </span>
+                      </div>
+                      ${crypto.diffChange24h && parseFloat(crypto.diffChange24h) !== 0 ? `
+                        <span style="font-size: 12px; padding: 4px 8px; border-radius: 4px; ${parseFloat(crypto.diffChange24h) < 0 ? 'background: rgba(5, 150, 105, 0.5); color: #6ee7b7;' : 'background: rgba(127, 29, 29, 0.5); color: #fca5a5;'}">
+                          ${parseFloat(crypto.diffChange24h) < 0 ? '↓' : '↑'} ${crypto.diffChange24h}%
+                        </span>
+                      ` : ''}
+                    </div>
+                    
+                    <div class="data-row">
+                      <div class="data-label">Difficoltà</div>
+                      <div class="data-value">${crypto.difficulty.toExponential(2)}</div>
+                    </div>
+                    
+                    <div class="data-row">
+                      <div class="data-label">Hashrate Rete</div>
+                      <div class="data-value">${crypto.networkHashrate.toFixed(4)} EH/s</div>
+                    </div>
+                    
+                    <div class="data-row">
+                      <div class="data-label">Ricompensa Blocco</div>
+                      <div class="data-value">
+                        ${crypto.blockReward.toLocaleString('it-IT')} ${crypto.symbol}
+                        ${crypto.price > 0 ? `<br><span style="color: #6ee7b7; font-size: 14px;">≈ $${rewardValue.toLocaleString('it-IT', {maximumFractionDigits: 0})}</span>` : ''}
+                      </div>
+                    </div>
+                    
+                    <div class="probability-box">
+                      <div style="color: #93c5fd; font-size: 13px; margin-bottom: 8px;">Con ${state.userHashrate} TH/s:</div>
+                      <div class="big">~${stats.yearsToBlock} anni</div>
+                      <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">(${stats.daysToBlock} giorni)</div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+          
+          <div style="margin-top: 20px; padding: 16px; background: rgba(30, 41, 59, 0.5); border: 1px solid #334155; border-radius: 8px; font-size: 12px; color: #94a3b8;">
+            <p><strong style="color: #6ee7b7;">✅ PWA:</strong> Installabile come app nativa</p>
+            <p><strong style="color: #93c5fd;">🔄 Backend:</strong> Dati reali da multiple API</p>
+            <p><strong style="color: #fbbf24;">⚡ Alert:</strong> Notifiche calo difficoltà automatiche</p>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Functions
+    function saveBackendUrl() {
+      const input = document.getElementById('backendUrlInput');
+      let url = input.value.trim();
+      if (url.endsWith('/')) url = url.slice(0, -1);
+      
+      if (!url) return;
+      
+      localStorage.setItem('backendUrl', url);
+      state.backendUrl = url;
+      state.isConfigured = true;
+      render();
+      fetchData();
+    }
+    
+    function changeServer() {
+      localStorage.removeItem('backendUrl');
+      state.isConfigured = false;
+      state.backendUrl = '';
+      render();
+    }
+    
+    async function fetchData() {
+      if (!state.backendUrl) return;
+      
+      state.loading = true;
+      state.error = null;
+      state.apiStatus = 'loading';
+      render();
+      
+      try {
+        const response = await fetch(`${state.backendUrl}/api/coins`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const result = await response.json();
+        if (!result.success || !Array.isArray(result.data)) {
+          throw new Error('Formato dati non valido');
+        }
+        
+        state.cryptos = result.data;
+        state.lastUpdate = result.lastUpdate;
+        state.apiStatus = 'connected';
+        
+        // Fetch alerts
+        try {
+          const alertsRes = await fetch(`${state.backendUrl}/api/alerts`);
+          const alertsData = await alertsRes.json();
+          if (alertsData.success) state.alerts = alertsData.alerts;
+        } catch (e) {}
+        
+      } catch (error) {
+        state.error = `Errore: ${error.message}`;
+        state.apiStatus = 'error';
+      } finally {
+        state.loading = false;
+        render();
+      }
+    }
+    
+    function updateHashrate(value) {
+      state.userHashrate = parseFloat(value) || 0;
+      render();
+    }
+    
+    function toggleAutoRefresh() {
+      state.autoRefresh = !state.autoRefresh;
+      if (state.autoRefresh) {
+        startAutoRefresh();
+      }
+      render();
+    }
+    
+    function calculateProbability(crypto) {
+      if (crypto.networkHashrate <= 0) {
+        return { probability: '0', daysToBlock: '∞', yearsToBlock: '∞' };
+      }
+      
+      const userHashrateEH = state.userHashrate / 1000000;
+      const probability = userHashrateEH / crypto.networkHashrate;
+      const blocksPerDay = 86400 / crypto.blockTime;
+      const daysToBlock = 1 / (probability * blocksPerDay);
+      const yearsToBlock = daysToBlock / 365;
+      
+      return {
+        probability: (probability * 100).toFixed(10),
+        daysToBlock: daysToBlock > 999999 ? '∞' : Math.round(daysToBlock).toLocaleString('it-IT'),
+        yearsToBlock: yearsToBlock > 99999 ? '∞' : Math.round(yearsToBlock).toLocaleString('it-IT')
+      };
+    }
+    
+    function getBestCrypto() {
+      if (state.cryptos.length === 0) return null;
+      
+      return state.cryptos.reduce((best, current) => {
+        const bestProb = calculateProbability(best);
+        const currentProb = calculateProbability(current);
+        const bestYears = bestProb.yearsToBlock === '∞' ? Infinity : parseInt(bestProb.yearsToBlock.replace(/\./g, ''));
+        const currentYears = currentProb.yearsToBlock === '∞' ? Infinity : parseInt(currentProb.yearsToBlock.replace(/\./g, ''));
+        return currentYears < bestYears ? current : best;
+      });
+    }
+    
+    function startAutoRefresh() {
+      setInterval(() => {
+        if (state.autoRefresh && state.isConfigured) {
+          fetchData();
+        }
+      }, 30000); // 30 secondi
+    }
+    
+    // Init
+    render();
+    if (state.isConfigured) {
+      fetchData();
+      startAutoRefresh();
+    }
+  </script>
+</body>
+</html>
