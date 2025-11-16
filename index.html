@@ -4,10 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e293b">
+  <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
   <title>Mining Monitor SHA-256</title>
-  
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIk1pbmluZyBNb25pdG9yIFNIQS0yNTYiLAogICJzaG9ydF9uYW1lIjogIk1pbmluZyBNb25pdG9yIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMxZTI5M2IiLAogICJ0aGVtZV9jb2xvciI6ICIjMWUyOTNiIiwKICAiaWNvbnMiOiBbXQp9">
   
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -67,6 +65,7 @@
       cursor: pointer;
       font-size: 14px;
     }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-primary { background: #2563eb; color: white; }
     .btn-success { background: #059669; color: white; }
     .btn-secondary { background: #475569; color: white; }
@@ -189,6 +188,8 @@
       apiStatus: 'connecting'
     };
     
+    let refreshInterval = null;
+    
     // Render
     function render() {
       const app = document.getElementById('app');
@@ -201,8 +202,8 @@
             <input type="url" id="backendUrlInput" placeholder="https://tuo-backend.onrender.com" value="${state.backendUrl}" style="width: 100%; margin-bottom: 16px;">
             <button class="btn btn-primary" onclick="saveBackendUrl()" style="width: 100%;">Salva e Connetti</button>
             <div style="margin-top: 20px; padding: 16px; background: rgba(30, 58, 138, 0.3); border: 1px solid #3b82f6; border-radius: 6px; font-size: 13px;">
-              <strong>📝 Esempio:</strong><br>
-              <code>https://mining-monitor.onrender.com</code>
+              <strong>📝 Il tuo URL:</strong><br>
+              <code style="word-break: break-all;">https://mining-monitor-backend.onrender.com</code>
             </div>
           </div>
         `;
@@ -271,6 +272,7 @@
             <div class="loading">
               <div class="spinner"></div>
               <p>Caricamento dati dal backend...</p>
+              <p style="font-size: 12px; color: #94a3b8; margin-top: 8px;">Può richiedere 30-60 secondi se il server è inattivo</p>
             </div>
           ` : state.cryptos.length === 0 ? `
             <div class="loading">
@@ -357,6 +359,7 @@
       localStorage.removeItem('backendUrl');
       state.isConfigured = false;
       state.backendUrl = '';
+      if (refreshInterval) clearInterval(refreshInterval);
       render();
     }
     
@@ -369,31 +372,78 @@
       render();
       
       try {
-        const response = await fetch(`${state.backendUrl}/api/coins`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        console.log('Fetching from:', state.backendUrl);
         
-        const result = await response.json();
-        if (!result.success || !Array.isArray(result.data)) {
-          throw new Error('Formato dati non valido');
-        }
+        // Usa XMLHttpRequest invece di fetch per evitare problemi CORS
+        const xhr = new XMLHttpRequest();
+        xhr.timeout = 30000; // 30 secondi timeout
         
-        state.cryptos = result.data;
-        state.lastUpdate = result.lastUpdate;
-        state.apiStatus = 'connected';
-        
-        // Fetch alerts
-        try {
-          const alertsRes = await fetch(`${state.backendUrl}/api/alerts`);
-          const alertsData = await alertsRes.json();
-          if (alertsData.success) state.alerts = alertsData.alerts;
-        } catch (e) {}
+        await new Promise((resolve, reject) => {
+          xhr.open('GET', `${state.backendUrl}/api/coins`, true);
+          xhr.setRequestHeader('Accept', 'application/json');
+          
+          xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const result = JSON.parse(xhr.responseText);
+                
+                if (!result.success || !Array.isArray(result.data)) {
+                  throw new Error('Formato dati non valido');
+                }
+                
+                state.cryptos = result.data;
+                state.lastUpdate = result.lastUpdate;
+                state.apiStatus = 'connected';
+                state.error = null;
+                
+                // Fetch alerts
+                fetchAlerts();
+                
+                resolve();
+              } catch (e) {
+                reject(new Error('Errore parsing JSON: ' + e.message));
+              }
+            } else {
+              reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+            }
+          };
+          
+          xhr.onerror = () => reject(new Error('Errore di rete'));
+          xhr.ontimeout = () => reject(new Error('Timeout - il server sta dormendo, riprova tra 1 minuto'));
+          
+          xhr.send();
+        });
         
       } catch (error) {
-        state.error = `Errore: ${error.message}`;
+        console.error('Fetch error:', error);
+        state.error = error.message;
         state.apiStatus = 'error';
       } finally {
         state.loading = false;
         render();
+      }
+    }
+    
+    async function fetchAlerts() {
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.timeout = 10000;
+        
+        xhr.open('GET', `${state.backendUrl}/api/alerts`, true);
+        xhr.onload = function() {
+          if (xhr.status === 200) {
+            try {
+              const alertsData = JSON.parse(xhr.responseText);
+              if (alertsData.success) {
+                state.alerts = alertsData.alerts;
+                render();
+              }
+            } catch (e) {}
+          }
+        };
+        xhr.send();
+      } catch (e) {
+        console.error('Alerts fetch error:', e);
       }
     }
     
@@ -404,9 +454,13 @@
     
     function toggleAutoRefresh() {
       state.autoRefresh = !state.autoRefresh;
+      
       if (state.autoRefresh) {
         startAutoRefresh();
+      } else {
+        if (refreshInterval) clearInterval(refreshInterval);
       }
+      
       render();
     }
     
@@ -441,7 +495,9 @@
     }
     
     function startAutoRefresh() {
-      setInterval(() => {
+      if (refreshInterval) clearInterval(refreshInterval);
+      
+      refreshInterval = setInterval(() => {
         if (state.autoRefresh && state.isConfigured) {
           fetchData();
         }
@@ -449,10 +505,15 @@
     }
     
     // Init
+    console.log('Mining Monitor PWA v5.0 initialized');
     render();
+    
     if (state.isConfigured) {
+      console.log('Config found, fetching data...');
       fetchData();
-      startAutoRefresh();
+      if (state.autoRefresh) {
+        startAutoRefresh();
+      }
     }
   </script>
 </body>
